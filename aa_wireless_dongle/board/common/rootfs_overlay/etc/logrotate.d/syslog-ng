@@ -1,0 +1,19 @@
+/var/log/messages
+/var/log/user.log
+{
+    rotate 7
+    daily
+    missingok
+    notifempty
+    delaycompress
+    compress
+    postrotate
+        # Signal syslog-ng to reopen log files if it's running.
+        # Adjust path to syslog-ng.ctl if different.
+        if [ -S /var/run/syslog-ng.ctl ]; then
+            /usr/sbin/syslog-ng-ctl reopen > /dev/null 2>&1 || true
+        elif [ -S /run/syslog-ng.ctl ]; then
+             /usr/sbin/syslog-ng-ctl reopen > /dev/null 2>&1 || true
+        fi
+    endscript
+}
