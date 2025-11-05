@@ -42,12 +42,30 @@ private:
     std::optional<ConnectionStrategy> connectionStrategy;
 };
 
+enum class LogLevel {
+    DEBUG = 0,
+    INFO = 1,
+    WARN = 2,
+    ERROR = 3
+};
+
 class Logger {
 public:
     static Logger* instance();
 
+    void debug(const char *format, ...);
     void info(const char *format, ...);
+    void warn(const char *format, ...);
+    void error(const char *format, ...);
+
+    void setLogLevel(LogLevel level);
+    LogLevel getLogLevel() const;
+
 private:
     Logger();
     ~Logger();
+
+    void log(LogLevel level, const char *format, va_list args);
+
+    LogLevel m_logLevel = LogLevel::INFO;
 };

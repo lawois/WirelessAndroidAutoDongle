@@ -8,6 +8,7 @@
 
 constexpr const char* defaultGadgetName = "default";
 constexpr const char* accessoryGadgetName = "accessory";
+constexpr int USB_GADGET_SWITCH_DELAY_MS = 100;  // Delay in ms when switching USB gadgets
 
 /*static*/ std::string UsbManager::s_udcName;
 
@@ -52,6 +53,10 @@ UsbManager::UsbManager() {
 void UsbManager::writeGadgetFile(std::string gadgetName, std::string relativeFilePath, const char* content) {
     std::string gadgetFilePath = "/sys/kernel/config/usb_gadget/" + gadgetName + "/" + relativeFilePath;
     FILE* gadgetFile = fopen(gadgetFilePath.c_str(), "w");
+    if (gadgetFile == NULL) {
+        Logger::instance()->info("USB Manager: Failed to open %s: %s\n", gadgetFilePath.c_str(), strerror(errno));
+        return;
+    }
     fputs(content, gadgetFile);
     fputc('\n', gadgetFile);
     fclose(gadgetFile);
@@ -67,7 +72,7 @@ void UsbManager::disableGadget(std::string gadgetName) {
 
 void UsbManager::switchToAccessoryGadget() {
     disableGadget(defaultGadgetName);
-    std::this_thread::sleep_for(std::chrono::milliseconds(100)); // 0.1 second, keep the gadget disabled for a short time to let the host recognize the change
+    std::this_thread::sleep_for(std::chrono::milliseconds(USB_GADGET_SWITCH_DELAY_MS));
     enableGadget(accessoryGadgetName);
 
     Logger::instance()->info("USB Manager: Switched to accessory gadget from default\n");

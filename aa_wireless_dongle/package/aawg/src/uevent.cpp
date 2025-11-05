@@ -48,9 +48,11 @@ void UeventMonitor::monitorLoop(int nl_socket) {
         }
 
         // Call the handlers
-        for (auto it = handlers.cbegin(); it != handlers.cend(); ++it) {
+        for (auto it = handlers.cbegin(); it != handlers.cend(); ) {
             if ((*it)(envMap)) {
                 it = handlers.erase(it);
+            } else {
+                ++it;
             }
         }
     }
@@ -69,11 +71,10 @@ std::optional<std::thread> UeventMonitor::start() {
         return std::nullopt;
     }
 
-    struct sockaddr_nl address = {
-        .nl_family = AF_NETLINK,
-        .nl_pid = (unsigned int)getpid(),
-        .nl_groups = -1u
-    };
+    struct sockaddr_nl address = {};
+    address.nl_family = AF_NETLINK;
+    address.nl_pid = (unsigned int)getpid();
+    address.nl_groups = -1u;
 
     if (bind(nl_sock, (struct sockaddr*)&address, sizeof(address)) < 0) {
         Logger::instance()->info("bind failed for netlink socket: %s\n", strerror(errno));

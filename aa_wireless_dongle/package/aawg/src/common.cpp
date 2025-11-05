@@ -98,16 +98,94 @@ ConnectionStrategy Config::getConnectionStrategy() {
 
 Logger::Logger() {
     openlog(nullptr, LOG_PERROR | LOG_PID, LOG_USER);
+
+    // Read log level from environment
+    char* envLevel = std::getenv("AAWG_LOG_LEVEL");
+    if (envLevel != nullptr) {
+        std::string level(envLevel);
+        if (level == "DEBUG") {
+            m_logLevel = LogLevel::DEBUG;
+        } else if (level == "INFO") {
+            m_logLevel = LogLevel::INFO;
+        } else if (level == "WARN") {
+            m_logLevel = LogLevel::WARN;
+        } else if (level == "ERROR") {
+            m_logLevel = LogLevel::ERROR;
+        }
+    }
 }
 
 Logger::~Logger() {
     closelog();
 }
 
+void Logger::log(LogLevel level, const char *format, va_list args) {
+    if (level < m_logLevel) {
+        return;
+    }
+
+    int priority;
+    const char* levelStr;
+
+    switch (level) {
+        case LogLevel::DEBUG:
+            priority = LOG_DEBUG;
+            levelStr = "DEBUG";
+            break;
+        case LogLevel::INFO:
+            priority = LOG_INFO;
+            levelStr = "INFO";
+            break;
+        case LogLevel::WARN:
+            priority = LOG_WARNING;
+            levelStr = "WARN";
+            break;
+        case LogLevel::ERROR:
+            priority = LOG_ERR;
+            levelStr = "ERROR";
+            break;
+        default:
+            priority = LOG_INFO;
+            levelStr = "INFO";
+            break;
+    }
+
+    vsyslog(priority, format, args);
+}
+
+void Logger::debug(const char *format, ...) {
+    va_list args;
+    va_start(args, format);
+    log(LogLevel::DEBUG, format, args);
+    va_end(args);
+}
+
 void Logger::info(const char *format, ...) {
     va_list args;
     va_start(args, format);
-    vsyslog(LOG_INFO, format, args);
+    log(LogLevel::INFO, format, args);
     va_end(args);
+}
+
+void Logger::warn(const char *format, ...) {
+    va_list args;
+    va_start(args, format);
+    log(LogLevel::WARN, format, args);
+    va_end(args);
+}
+
+void Logger::error(const char *format, ...) {
+    va_list args;
+    va_start(args, format);
+    log(LogLevel::ERROR, format, args);
+    va_end(args);
+}
+
+void Logger::setLogLevel(LogLevel level) {
+    m_logLevel = level;
+}
+
+LogLevel Logger::getLogLevel() const {
+    return m_logLevel;
 }
 #pragma endregion Logger

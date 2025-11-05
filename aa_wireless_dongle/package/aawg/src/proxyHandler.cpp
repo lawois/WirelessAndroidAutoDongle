@@ -10,11 +10,17 @@
 #include <optional>
 #include <atomic>
 #include <string>
+#include <vector>
 
 #include "common.h"
 #include "usb.h"
 #include "bluetoothHandler.h"
 #include "proxyHandler.h"
+
+// Constants
+constexpr size_t PROXY_BUFFER_SIZE = 16384;  // 16KB buffer for data transfer
+constexpr int SOCKET_LISTEN_BACKLOG = 3;     // Max pending connections
+constexpr int TCP_SOCKET_TIMEOUT_SEC = 10;   // TCP socket receive timeout in seconds
 
 void empty_signal_handler(int signal) {
     // Empty. We don't want to do anything but interrupt the thread.
@@ -27,6 +33,23 @@ ssize_t AAWProxy::readFully(int fd, unsigned char *buffer, size_t nbyte) {
 
         if (len <= 0) {
             // Error, cannot read more.
+            return len;
+        }
+
+        buffer += len;
+        remaining_bytes -= len;
+    }
+
+    return nbyte;
+}
+
+ssize_t AAWProxy::writeFully(int fd, const unsigned char *buffer, size_t nbyte) {
+    size_t remaining_bytes = nbyte;
+    while (remaining_bytes > 0) {
+        ssize_t len = write(fd, buffer, remaining_bytes);
+
+        if (len <= 0) {
+            // Error, cannot write more.
             return len;
         }
 
@@ -66,8 +89,7 @@ ssize_t AAWProxy::readMessage(int fd, unsigned char *buffer, size_t buffer_len) 
 }
 
 void AAWProxy::forward(ProxyDirection direction, std::atomic<bool>& should_exit) {
-    size_t buffer_len = 16384;
-    unsigned char buffer[buffer_len];
+    std::vector<unsigned char> buffer(PROXY_BUFFER_SIZE);
 
     bool read_message;
     int read_fd, write_fd;
@@ -95,7 +117,7 @@ void AAWProxy::forward(ProxyDirection direction, std::atomic<bool>& should_exit)
 
     while (!should_exit) {
         // Read
-        ssize_t len = read_message ? readMessage(read_fd, buffer, buffer_len) : read(read_fd, buffer, buffer_len);
+        ssize_t len = read_message ? readMessage(read_fd, buffer.data(), PROXY_BUFFER_SIZE) : read(read_fd, buffer.data(), PROXY_BUFFER_SIZE);
 
         if (len <= 0) {
             // Start logging read/write details if there is an error.
@@ -117,7 +139,7 @@ void AAWProxy::forward(ProxyDirection direction, std::atomic<bool>& should_exit)
         }
 
         // Write
-        ssize_t wlen = write(write_fd, buffer, len);
+        ssize_t wlen = writeFully(write_fd, buffer.data(), len);
 
         if (wlen <= 0) {
             // Start logging read/write details if there is an error.
@@ -129,6 +151,10 @@ void AAWProxy::forward(ProxyDirection direction, std::atomic<bool>& should_exit)
 
         if (wlen < 0) {
             Logger::instance()->info("Write to %s failed: %s\n", write_name.c_str(), strerror(errno));
+            break;
+        }
+        else if (wlen != len) {
+            Logger::instance()->info("Incomplete write to %s: expected %d, wrote %d\n", write_name.c_str(), len, wlen);
             break;
         }
         else if (should_exit) {
@@ -182,7 +208,7 @@ void AAWProxy::handleClient(int server_sock) {
 
     // Set timeout on the TCP socket
     struct timeval tv = {
-        .tv_sec = 10,
+        .tv_sec = TCP_SOCKET_TIMEOUT_SEC,
         .tv_usec = 0,
     };
 
@@ -231,8 +257,12 @@ std::optional<std::thread> AAWProxy::startServer(int32_t port) {
     }
 
     int opt = 1;
-    if (setsockopt(server_sock, SOL_SOCKET, SO_REUSEADDR | SO_REUSEPORT, &opt, sizeof(opt))) {
-        Logger::instance()->info("setsockopt failed: %s\n", strerror(errno));
+    if (setsockopt(server_sock, SOL_SOCKET, SO_REUSEADDR, &opt, sizeof(opt))) {
+        Logger::instance()->info("setsockopt SO_REUSEADDR failed: %s\n", strerror(errno));
+        return std::nullopt;
+    }
+    if (setsockopt(server_sock, SOL_SOCKET, SO_REUSEPORT, &opt, sizeof(opt))) {
+        Logger::instance()->info("setsockopt SO_REUSEPORT failed: %s\n", strerror(errno));
         return std::nullopt;
     }
 
@@ -246,7 +276,7 @@ std::optional<std::thread> AAWProxy::startServer(int32_t port) {
         return std::nullopt;
     }
 
-    if (listen(server_sock, 3) < 0) {
+    if (listen(server_sock, SOCKET_LISTEN_BACKLOG) < 0) {
         Logger::instance()->info("listen failed: %s\n", strerror(errno));
         return std::nullopt;
     }

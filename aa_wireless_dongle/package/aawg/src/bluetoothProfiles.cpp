@@ -3,6 +3,7 @@
 #include <unistd.h>
 #include <fcntl.h>
 #include <arpa/inet.h>
+#include <memory>
 
 #include "common.h"
 #include "bluetoothHandler.h"
@@ -100,26 +101,24 @@ private:
         uint16_t messageSize = (uint16_t)message->ByteSizeLong();
         uint16_t length = messageSize + 4;
 
-        unsigned char* buffer = new unsigned char[length];
+        std::unique_ptr<unsigned char[]> buffer(new unsigned char[length]);
 
         uint16_t networkShort = 0;
         networkShort = htons(messageSize);
-        memcpy(buffer, &networkShort, sizeof(networkShort));
+        memcpy(buffer.get(), &networkShort, sizeof(networkShort));
 
         networkShort = htons(static_cast<uint16_t>(messageId));
-        memcpy(buffer + 2, &networkShort, sizeof(networkShort));
+        memcpy(buffer.get() + 2, &networkShort, sizeof(networkShort));
 
-        message->SerializeToArray(buffer + 4, messageSize);
+        message->SerializeToArray(buffer.get() + 4, messageSize);
 
-        ssize_t wrote = write(m_fd, buffer, length);
+        ssize_t wrote = write(m_fd, buffer.get(), length);
         if (wrote < 0) {
-            Logger::instance()->info("Error sending %s, messageId: %d\n", MessageName(messageId).c_str(), messageId);
+            Logger::instance()->info("Error sending %s, messageId: %d: %s\n", MessageName(messageId).c_str(), messageId, strerror(errno));
         }
         else {
             Logger::instance()->info("Sent %s, messageId: %d, wrote %d bytes\n", MessageName(messageId).c_str(), messageId, wrote);
         }
-
-        delete[] buffer;
     }
 
     MessageId ReadMessage() {
@@ -128,7 +127,6 @@ private:
 
         readBytes = read(m_fd, &networkShort, 2);
         if (readBytes != 2) {
-            // Could not read 2 bytes. Do something.
             Logger::instance()->info("Error reading length, read bytes: %d, errno: %s\n", readBytes, strerror(errno));
             return MessageId::Invalid;
         }
@@ -136,18 +134,18 @@ private:
 
         readBytes = read(m_fd, &networkShort, 2);
         if (readBytes != 2) {
-            // Could not read 2 bytes. Do something.
             Logger::instance()->info("Error reading message id, read bytes: %d, errno: %s\n", readBytes, strerror(errno));
             return MessageId::Invalid;
         }
         MessageId messageId = static_cast<MessageId>(ntohs(networkShort));
 
         Logger::instance()->info("Read %s. length: %d, messageId: %d\n", MessageName(messageId).c_str(), length, messageId);
-        
-        unsigned char* buffer = new unsigned char[length];
-        readBytes = read(m_fd, buffer, length);
 
-        delete[] buffer;
+        std::unique_ptr<unsigned char[]> buffer(new unsigned char[length]);
+        readBytes = read(m_fd, buffer.get(), length);
+        if (readBytes < 0) {
+            Logger::instance()->info("Error reading message payload: %s\n", strerror(errno));
+        }
 
         return messageId;
     }
