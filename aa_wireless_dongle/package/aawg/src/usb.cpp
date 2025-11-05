@@ -28,7 +28,7 @@ UsbManager::UsbManager() {
 
     DIR* dirSysClassUdc = opendir("/sys/class/udc/");
     if (dirSysClassUdc == NULL) {
-        Logger::instance()->info("USB Manager: Error opening /sys/class/udc/: %s\n", strerror(errno));
+        Logger::instance()->error("USB Manager: Error opening /sys/class/udc/: %s\n", strerror(errno));
         return;
     }
     
@@ -44,7 +44,7 @@ UsbManager::UsbManager() {
     closedir(dirSysClassUdc);
 
     if (s_udcName.empty()) {
-        Logger::instance()->info("USB Manager: Did not find a valid UDC to use\n");
+        Logger::instance()->error("USB Manager: Did not find a valid UDC to use\n");
     } else {
         Logger::instance()->info("USB Manager: Found UDC %s\n", s_udcName.c_str());
     }
@@ -54,7 +54,7 @@ void UsbManager::writeGadgetFile(std::string gadgetName, std::string relativeFil
     std::string gadgetFilePath = "/sys/kernel/config/usb_gadget/" + gadgetName + "/" + relativeFilePath;
     FILE* gadgetFile = fopen(gadgetFilePath.c_str(), "w");
     if (gadgetFile == NULL) {
-        Logger::instance()->info("USB Manager: Failed to open %s: %s\n", gadgetFilePath.c_str(), strerror(errno));
+        Logger::instance()->error("USB Manager: Failed to open %s: %s\n", gadgetFilePath.c_str(), strerror(errno));
         return;
     }
     fputs(content, gadgetFile);
@@ -126,7 +126,7 @@ bool UsbManager::enableDefaultAndWaitForAccessory(std::chrono::milliseconds time
         if (status == std::future_status::ready) {
             return true;
         } else {
-            Logger::instance()->info("USB Manager: Timeout waiting for accessory start request\n");
+            Logger::instance()->warn("USB Manager: Timeout waiting for accessory start request\n");
             return false;
         }
     }

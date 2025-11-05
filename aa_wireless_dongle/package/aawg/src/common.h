@@ -23,21 +23,37 @@ enum class ConnectionStrategy {
     USB_FIRST = 2
 };
 
+struct RetryConfig {
+    int32_t maxRetries;           // Maximum number of retry attempts (0 = infinite)
+    int32_t initialDelayMs;       // Initial delay in milliseconds
+    int32_t maxDelayMs;           // Maximum delay in milliseconds
+    double backoffMultiplier;     // Multiplier for exponential backoff
+};
+
 class Config {
 public:
     static Config* instance();
 
     WifiInfo getWifiInfo();
     ConnectionStrategy getConnectionStrategy();
+    RetryConfig getRetryConfig();
 
     std::string getUniqueSuffix();
+
+    // Validation
+    bool validate();
+
 private:
     Config() = default;
 
     int32_t getenv(std::string name, int32_t defaultValue);
     std::string getenv(std::string name, std::string defaultValue);
+    double getenv(std::string name, double defaultValue);
 
     std::string getMacAddress(std::string interface);
+
+    bool validateWifiInfo(const WifiInfo& wifi);
+    bool validateRetryConfig(const RetryConfig& retry);
 
     std::optional<ConnectionStrategy> connectionStrategy;
 };

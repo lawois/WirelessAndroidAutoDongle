@@ -26,8 +26,31 @@ int main(void) {
     signal(SIGTERM, signal_handler);
     signal(SIGINT, signal_handler);
 
+    // Validate configuration
+    if (!Config::instance()->validate()) {
+        Logger::instance()->error("Configuration validation failed, exiting\n");
+        return 1;
+    }
+
+    // Display retry configuration
+    RetryConfig retryConfig = Config::instance()->getRetryConfig();
+    if (retryConfig.maxRetries > 0) {
+        Logger::instance()->info("Retry configuration: max=%d, initial=%dms, max=%dms, multiplier=%.1fx\n",
+                                retryConfig.maxRetries, retryConfig.initialDelayMs,
+                                retryConfig.maxDelayMs, retryConfig.backoffMultiplier);
+    } else {
+        Logger::instance()->info("Retry configuration: infinite retries, initial=%dms, max=%dms, multiplier=%.1fx\n",
+                                retryConfig.initialDelayMs, retryConfig.maxDelayMs,
+                                retryConfig.backoffMultiplier);
+    }
+
     // Global init
     std::optional<std::thread> ueventThread =  UeventMonitor::instance().start();
+    if (!ueventThread) {
+        Logger::instance()->error("Failed to start uevent monitor\n");
+        return 1;
+    }
+
     UsbManager::instance().init();
     BluetoothHandler::instance().init();
 

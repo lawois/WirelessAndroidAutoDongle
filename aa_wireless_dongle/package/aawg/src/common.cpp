@@ -28,6 +28,17 @@ std::string Config::getenv(std::string name, std::string defaultValue) {
     return envValue != nullptr ? envValue : defaultValue;
 }
 
+double Config::getenv(std::string name, double defaultValue) {
+    char* envValue = std::getenv(name.c_str());
+    try {
+        return envValue != nullptr ? std::stod(envValue) : defaultValue;
+    }
+    catch(...) {
+        Logger::instance()->warn("Invalid double value for %s, using default: %f\n", name.c_str(), defaultValue);
+        return defaultValue;
+    }
+}
+
 std::string Config::getMacAddress(std::string interface) {
     std::ifstream addressFile("/sys/class/net/" + interface + "/address");
 
@@ -87,6 +98,109 @@ ConnectionStrategy Config::getConnectionStrategy() {
     }
 
     return connectionStrategy.value();
+}
+
+RetryConfig Config::getRetryConfig() {
+    return {
+        getenv("AAWG_MAX_RETRIES", 0),                  // 0 = infinite retries (default)
+        getenv("AAWG_RETRY_INITIAL_DELAY_MS", 1000),    // 1 second initial delay
+        getenv("AAWG_RETRY_MAX_DELAY_MS", 60000),       // 60 seconds max delay
+        getenv("AAWG_RETRY_BACKOFF_MULTIPLIER", 2.0),   // Double delay each time
+    };
+}
+
+bool Config::validateWifiInfo(const WifiInfo& wifi) {
+    bool valid = true;
+
+    // Validate SSID length (1-32 characters for WiFi)
+    if (wifi.ssid.empty() || wifi.ssid.length() > 32) {
+        Logger::instance()->error("Invalid SSID length: %zu (must be 1-32 characters)\n", wifi.ssid.length());
+        valid = false;
+    }
+
+    // Validate WiFi password length (8-63 characters for WPA2)
+    if (wifi.key.length() < 8 || wifi.key.length() > 63) {
+        Logger::instance()->error("Invalid WiFi password length: %zu (must be 8-63 characters for WPA2)\n", wifi.key.length());
+        valid = false;
+    }
+
+    // Validate port range (1-65535)
+    if (wifi.port < 1 || wifi.port > 65535) {
+        Logger::instance()->error("Invalid port: %d (must be 1-65535)\n", wifi.port);
+        valid = false;
+    }
+
+    // Validate IP address is not empty
+    if (wifi.ipAddress.empty()) {
+        Logger::instance()->error("IP address cannot be empty\n");
+        valid = false;
+    }
+
+    return valid;
+}
+
+bool Config::validateRetryConfig(const RetryConfig& retry) {
+    bool valid = true;
+
+    // Validate max retries (0 or positive)
+    if (retry.maxRetries < 0) {
+        Logger::instance()->error("Invalid max retries: %d (must be 0 or positive)\n", retry.maxRetries);
+        valid = false;
+    }
+
+    // Validate initial delay (must be positive)
+    if (retry.initialDelayMs <= 0) {
+        Logger::instance()->error("Invalid initial delay: %d ms (must be positive)\n", retry.initialDelayMs);
+        valid = false;
+    }
+
+    // Validate max delay (must be >= initial delay)
+    if (retry.maxDelayMs < retry.initialDelayMs) {
+        Logger::instance()->error("Invalid max delay: %d ms (must be >= initial delay %d ms)\n",
+                                 retry.maxDelayMs, retry.initialDelayMs);
+        valid = false;
+    }
+
+    // Validate backoff multiplier (must be >= 1.0)
+    if (retry.backoffMultiplier < 1.0) {
+        Logger::instance()->error("Invalid backoff multiplier: %f (must be >= 1.0)\n", retry.backoffMultiplier);
+        valid = false;
+    }
+
+    return valid;
+}
+
+bool Config::validate() {
+    Logger::instance()->info("Validating configuration...\n");
+
+    bool valid = true;
+
+    // Validate WiFi info
+    WifiInfo wifi = getWifiInfo();
+    if (!validateWifiInfo(wifi)) {
+        valid = false;
+    }
+
+    // Validate retry config
+    RetryConfig retry = getRetryConfig();
+    if (!validateRetryConfig(retry)) {
+        valid = false;
+    }
+
+    // Validate connection strategy
+    ConnectionStrategy strategy = getConnectionStrategy();
+    if (static_cast<int>(strategy) < 0 || static_cast<int>(strategy) > 2) {
+        Logger::instance()->error("Invalid connection strategy: %d\n", static_cast<int>(strategy));
+        valid = false;
+    }
+
+    if (valid) {
+        Logger::instance()->info("Configuration validation passed\n");
+    } else {
+        Logger::instance()->error("Configuration validation FAILED\n");
+    }
+
+    return valid;
 }
 #pragma endregion Config
 

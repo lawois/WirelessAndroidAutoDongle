@@ -239,13 +239,35 @@ void BluetoothHandler::retryConnectLoop() {
 
     std::future<void> connectWithRetryFuture = localPromise->get_future();
 
+    // Get retry configuration
+    RetryConfig retryConfig = Config::instance()->getRetryConfig();
+    int32_t currentDelay = retryConfig.initialDelayMs;
+    int32_t attemptCount = 0;
+
     while (!should_exit) {
+        // Check if we've exceeded max retries (if limit is set)
+        if (retryConfig.maxRetries > 0 && attemptCount >= retryConfig.maxRetries) {
+            Logger::instance()->warn("Maximum retry attempts (%d) reached, stopping connection retries\n",
+                                    retryConfig.maxRetries);
+            break;
+        }
+
+        attemptCount++;
+        Logger::instance()->debug("Bluetooth connection attempt %d (delay: %d ms)\n", attemptCount, currentDelay);
+
         connectDevice();
 
-        if (connectWithRetryFuture.wait_for(std::chrono::seconds(20)) == std::future_status::ready) {
+        // Wait with exponential backoff
+        if (connectWithRetryFuture.wait_for(std::chrono::milliseconds(currentDelay)) == std::future_status::ready) {
             should_exit = true;
             std::lock_guard<std::mutex> lock(m_connectPromiseMutex);
             connectWithRetryPromise = nullptr;
+        } else {
+            // Calculate next delay with exponential backoff
+            int32_t nextDelay = static_cast<int32_t>(currentDelay * retryConfig.backoffMultiplier);
+            currentDelay = std::min(nextDelay, retryConfig.maxDelayMs);
+
+            Logger::instance()->debug("Next retry delay: %d ms\n", currentDelay);
         }
     }
 

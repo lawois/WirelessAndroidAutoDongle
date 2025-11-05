@@ -128,7 +128,7 @@ void AAWProxy::forward(ProxyDirection direction, std::atomic<bool>& should_exit)
         }
 
         if (len < 0) {
-            Logger::instance()->info("Read from %s failed: %s\n", read_name.c_str(), strerror(errno));
+            Logger::instance()->error("Read from %s failed: %s\n", read_name.c_str(), strerror(errno));
             break;
         }
         else if (len == 0) {
@@ -150,11 +150,11 @@ void AAWProxy::forward(ProxyDirection direction, std::atomic<bool>& should_exit)
         }
 
         if (wlen < 0) {
-            Logger::instance()->info("Write to %s failed: %s\n", write_name.c_str(), strerror(errno));
+            Logger::instance()->error("Write to %s failed: %s\n", write_name.c_str(), strerror(errno));
             break;
         }
         else if (wlen != len) {
-            Logger::instance()->info("Incomplete write to %s: expected %d, wrote %d\n", write_name.c_str(), len, wlen);
+            Logger::instance()->error("Incomplete write to %s: expected %d, wrote %d\n", write_name.c_str(), len, wlen);
             break;
         }
         else if (should_exit) {
@@ -183,7 +183,7 @@ void AAWProxy::handleClient(int server_sock) {
     socklen_t client_addresslen = sizeof(client_address);
     if ((m_tcp_fd = accept(server_sock, &client_address, &client_addresslen)) < 0) {
         close(server_sock);
-        Logger::instance()->info("accept failed: %s\n", strerror(errno));
+        Logger::instance()->error("accept failed: %s\n", strerror(errno));
         return;
     }
 
@@ -200,9 +200,9 @@ void AAWProxy::handleClient(int server_sock) {
         }
     }
 
-    Logger::instance()->info("Opening usb accessory\n");
+    Logger::instance()->debug("Opening usb accessory\n");
     if ((m_usb_fd = open("/dev/usb_accessory", O_RDWR)) < 0) {
-        Logger::instance()->info("error opening /dev/usb_accessory: %s\n", strerror(errno));
+        Logger::instance()->error("Error opening /dev/usb_accessory: %s\n", strerror(errno));
         return;
     }
 
@@ -213,7 +213,7 @@ void AAWProxy::handleClient(int server_sock) {
     };
 
     if (setsockopt(m_tcp_fd, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv))) {
-        Logger::instance()->info("setsockopt failed: %s\n", strerror(errno));
+        Logger::instance()->error("setsockopt SO_RCVTIMEO failed: %s\n", strerror(errno));
         return;
     }
 
@@ -223,7 +223,7 @@ void AAWProxy::handleClient(int server_sock) {
     sigemptyset(&sa.sa_mask);
     sa.sa_flags = 0;
     if (sigaction(SIGUSR1, &sa, NULL)) {
-        Logger::instance()->info("Adding signal handler failed: %s\n", strerror(errno));
+        Logger::instance()->error("Adding signal handler failed: %s\n", strerror(errno));
     }
 
     Logger::instance()->info("Forwarding data between TCP and USB\n");
@@ -249,20 +249,20 @@ void AAWProxy::handleClient(int server_sock) {
 }
 
 std::optional<std::thread> AAWProxy::startServer(int32_t port) {
-    Logger::instance()->info("Starting tcp server\n");
+    Logger::instance()->info("Starting TCP server on port %d\n", port);
     int server_sock;
     if ((server_sock = socket(AF_INET, SOCK_STREAM, 0)) < 0) {
-        Logger::instance()->info("creating socket failed: %s\n", strerror(errno));
+        Logger::instance()->error("Creating socket failed: %s\n", strerror(errno));
         return std::nullopt;
     }
 
     int opt = 1;
     if (setsockopt(server_sock, SOL_SOCKET, SO_REUSEADDR, &opt, sizeof(opt))) {
-        Logger::instance()->info("setsockopt SO_REUSEADDR failed: %s\n", strerror(errno));
+        Logger::instance()->error("setsockopt SO_REUSEADDR failed: %s\n", strerror(errno));
         return std::nullopt;
     }
     if (setsockopt(server_sock, SOL_SOCKET, SO_REUSEPORT, &opt, sizeof(opt))) {
-        Logger::instance()->info("setsockopt SO_REUSEPORT failed: %s\n", strerror(errno));
+        Logger::instance()->error("setsockopt SO_REUSEPORT failed: %s\n", strerror(errno));
         return std::nullopt;
     }
 
@@ -272,12 +272,12 @@ std::optional<std::thread> AAWProxy::startServer(int32_t port) {
     address.sin_port = htons(port);
 
     if (bind(server_sock, (struct sockaddr*)&address, sizeof(address)) < 0) {
-        Logger::instance()->info("bind failed: %s\n", strerror(errno));
+        Logger::instance()->error("Bind to port %d failed: %s\n", port, strerror(errno));
         return std::nullopt;
     }
 
     if (listen(server_sock, SOCKET_LISTEN_BACKLOG) < 0) {
-        Logger::instance()->info("listen failed: %s\n", strerror(errno));
+        Logger::instance()->error("Listen failed: %s\n", strerror(errno));
         return std::nullopt;
     }
 
